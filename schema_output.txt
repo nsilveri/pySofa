@@ -1,0 +1,11 @@
+Column: id - Type: BIGINT
+Column: tournament - Type: TEXT
+Column: season - Type: TEXT
+Column: home_team - Type: TEXT
+Column: away_team - Type: TEXT
+Column: home_score - Type: TEXT
+Column: away_score - Type: TEXT
+Column: status - Type: TEXT
+Column: start_timestamp - Type: BIGINT
+Column: home_country - Type: TEXT
+Column: away_country - Type: TEXT

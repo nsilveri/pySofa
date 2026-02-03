@@ -21,3 +21,5 @@ config.py
 # IDEs
 .vscode/
 .idea/
+
+scripts/analyze_score_frequency/models/
