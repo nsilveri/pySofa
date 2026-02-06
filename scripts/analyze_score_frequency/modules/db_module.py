@@ -1,4 +1,4 @@
-from config import DB_CONFIG
+from .config import DB_CONFIG
 import psycopg2
 from psycopg2 import sql, extras
 
@@ -23,7 +23,9 @@ def create_table(conn):
         status TEXT,
         start_timestamp BIGINT,
         home_country TEXT,
-        away_country TEXT
+        away_country TEXT,
+        home_score_ht INT,
+        away_score_ht INT
     );
     """)
     try:
@@ -36,8 +38,8 @@ def create_table(conn):
 
 def insert_matches(conn, events):
     insert_query = """
-    INSERT INTO matches (id, tournament, season, home_team, away_team, home_score, away_score, status, start_timestamp, home_country, away_country)
-    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+    INSERT INTO matches (id, tournament, season, home_team, away_team, home_score, away_score, status, start_timestamp, home_country, away_country, home_score_ht, away_score_ht)
+    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
     ON CONFLICT (id) DO NOTHING;
     """
     try:
@@ -53,8 +55,10 @@ def insert_matches(conn, events):
                     str(event.get('awayScore', {}).get('current', 'N/A')),
                     event['status']['description'],
                     event.get('startTimestamp'),
-                    event['homeTeam']['country']['name'],
-                    event['awayTeam']['country']['name']
+                    event['homeTeam'].get('country', {}).get('name', 'N/A'),
+                    event['awayTeam'].get('country', {}).get('name', 'N/A'),
+                    event.get('homeScore', {}).get('period1'),
+                    event.get('awayScore', {}).get('period1')
                 )
                 cursor.execute(insert_query, data)
         conn.commit()
@@ -292,3 +296,91 @@ def populate_statistics_column_db(conn=None):
             conn.close()
     else:
         print("Impossibile connettersi al database per popolare le statistiche colonne.")
+
+def create_incidents_table(conn):
+    """Crea le tabelle per gli incidenti (JSON e Colonne)."""
+    create_json_query = """
+    CREATE TABLE IF NOT EXISTS match_incidents_json (
+        match_id BIGINT PRIMARY KEY,
+        incidents JSONB
+    );
+    """
+    create_column_query = """
+    CREATE TABLE IF NOT EXISTS match_incidents_column (
+        match_id BIGINT,
+        time INT,
+        added_time INT,
+        incident_type TEXT,
+        team_side TEXT,
+        player_name TEXT,
+        home_score INT,
+        away_score INT
+    );
+    """
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute(create_json_query)
+            cursor.execute(create_column_query)
+        conn.commit()
+    except Exception as e:
+        print(f"Errore nella creazione delle tabelle incidents: {e}")
+
+def insert_incidents(conn, match_id, incidents_data):
+    """Inserisce gli incidenti sia in formato JSON che in colonne."""
+    # 1. Inserimento JSON
+    insert_json_query = """
+    INSERT INTO match_incidents_json (match_id, incidents)
+    VALUES (%s, %s)
+    ON CONFLICT (match_id) DO UPDATE SET incidents = EXCLUDED.incidents;
+    """
+    
+    # 2. Preparazione dati per Colonne
+    incidents_list = incidents_data.get('incidents', [])
+    column_data = []
+    for inc in incidents_list:
+        column_data.append((
+            match_id,
+            inc.get('time'),
+            inc.get('addedTime', 0),
+            inc.get('incidentType', inc.get('type')),
+            inc.get('teamSide'),
+            inc.get('player', {}).get('name'),
+            inc.get('homeScore'),
+            inc.get('awayScore')
+        ))
+    
+    insert_column_query = """
+    INSERT INTO match_incidents_column (
+        match_id, time, added_time, incident_type, team_side, player_name, home_score, away_score
+    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s);
+    """
+    
+    try:
+        with conn.cursor() as cursor:
+            # Salviamo il JSON
+            cursor.execute(insert_json_query, (match_id, extras.Json(incidents_data)))
+            
+            # Puliamo i vecchi record in colonna per questo match ed inseriamo i nuovi
+            cursor.execute("DELETE FROM match_incidents_column WHERE match_id = %s", (match_id,))
+            if column_data:
+                extras.execute_batch(cursor, insert_column_query, column_data)
+                
+        conn.commit()
+        print(f"Incidenti (JSON + Colonne) inseriti per match {match_id}.")
+    except Exception as e:
+        print(f"Errore nell'inserimento degli incidenti per match {match_id}: {e}")
+
+def save_incidents_to_db(match_id, incidents, conn=None):
+    """Salva gli incidenti nel database, gestendo la connessione."""
+    should_close = False
+    if conn is None:
+        conn = create_connection()
+        should_close = True
+        
+    if conn:
+        create_incidents_table(conn)
+        insert_incidents(conn, match_id, incidents)
+        if should_close:
+            conn.close()
+    else:
+        print("Impossibile connettersi al database per gli incidenti.")

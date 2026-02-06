@@ -59,3 +59,14 @@ def get_statistics_per_match(match_id, driver):
     except Exception as e:
         logging.error(f"Errore nel recupero delle statistiche per match {match_id}: {e}")
         return None
+
+def get_incidents_per_match(match_id, driver):
+    """Ottiene gli incidenti (goal, cartellini, ecc.) per un match."""
+    url = f'https://www.sofascore.com/api/v1/event/{match_id}/incidents'
+    try:
+        driver.get(url)
+        time.sleep(0.5)
+        return extract_json_from_pre(driver.page_source)
+    except Exception as e:
+        logging.error(f"Errore nel recupero degli incidenti per match {match_id}: {e}")
+        return None
