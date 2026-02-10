@@ -32,9 +32,8 @@ def create_table(conn):
         with conn.cursor() as cursor:
             cursor.execute(create_table_query)
         conn.commit()
-        print("Tabella 'matches' creata o già esistente.")
     except Exception as e:
-        print(f"Errore nella creazione della tabella: {e}")
+        print(f"Errore nella creazione della tabella matches: {e}")
 
 def insert_matches(conn, events):
     insert_query = """
@@ -61,10 +60,8 @@ def insert_matches(conn, events):
                     event.get('awayScore', {}).get('period1')
                 )
                 cursor.execute(insert_query, data)
-        conn.commit()
-        print(f"Inseriti {len(events)} eventi nel database.")
     except Exception as e:
-        print(f"Errore nell'inserimento dei dati: {e}")
+        print(f"Errore nell'inserimento dei dati base: {e}")
 
 def save_matches_to_db(events, conn=None):
     should_close = False
@@ -137,7 +134,7 @@ def insert_graphics(conn, match_id, graphics):
             cursor.execute(insert_json_query, (match_id, extras.Json(graphics)))
             cursor.execute(insert_column_query, [match_id] + values)
         conn.commit()
-        print(f"Grafici inseriti per match {match_id}.")
+        # print(f"Grafici inseriti per match {match_id}.")
     except Exception as e:
         print(f"Errore nell'inserimento dei grafici per match {match_id}: {e}")
 
@@ -280,7 +277,7 @@ def populate_statistics_column(conn):
                                 match_id, period, groupName, name, home, away, compareCode, statisticsType, valueType, homeValue, awayValue, renderType, key
                             ))
         conn.commit()
-        print("Tabella match_statistics_column popolata con successo.")
+        # print("Tabella match_statistics_column popolata con successo.")
     except Exception as e:
         print(f"Errore nel popolamento della tabella match_statistics_column: {e}")
 
@@ -366,7 +363,7 @@ def insert_incidents(conn, match_id, incidents_data):
                 extras.execute_batch(cursor, insert_column_query, column_data)
                 
         conn.commit()
-        print(f"Incidenti (JSON + Colonne) inseriti per match {match_id}.")
+        # print(f"Incidenti (JSON + Colonne) inseriti per match {match_id}.")
     except Exception as e:
         print(f"Errore nell'inserimento degli incidenti per match {match_id}: {e}")
 
@@ -384,3 +381,14 @@ def save_incidents_to_db(match_id, incidents, conn=None):
             conn.close()
     else:
         print("Impossibile connettersi al database per gli incidenti.")
+
+def check_match_exists(match_id, conn):
+    """Verifica se abbiamo già elaborato i dettagli di questo match."""
+    try:
+        with conn.cursor() as cursor:
+            # Verifichiamo se esiste in grafici o incidenti (segno che Selenium ha già girato)
+            query = "SELECT 1 FROM match_graphics_json WHERE match_id = %s UNION SELECT 1 FROM match_incidents_json WHERE match_id = %s LIMIT 1"
+            cursor.execute(query, (match_id, match_id))
+            return cursor.fetchone() is not None
+    except Exception:
+        return False

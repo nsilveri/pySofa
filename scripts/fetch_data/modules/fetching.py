@@ -21,7 +21,7 @@ def process_date(date_str, headless_mode=True):
     conn = None
     
     try:
-        logging.info(f"Inzio elaborazione per data: {date_str}")
+        logging.debug(f"Inzio elaborazione per data: {date_str}")
         
         # 1. Setup Driver
         driver = setup_driver(headless_mode)
@@ -33,7 +33,7 @@ def process_date(date_str, headless_mode=True):
             return
 
         # 3. Download Lista Match
-        logging.info("Scaricamento lista partite...")
+        logging.debug("Scaricamento lista partite...")
         data = get_matches_per_day.get_matches_data(date_str, driver=driver)
         
         if not data or 'events' not in data:
@@ -42,18 +42,26 @@ def process_date(date_str, headless_mode=True):
 
         events = data.get('events', [])
         total = len(events)
-        logging.info(f"Trovati {total} eventi.")
+        logging.debug(f"Trovati {total} eventi.")
 
         # 4. Salvataggio Match Base
         db_module.save_matches_to_db(events, conn=conn)
         
+        from tqdm.auto import tqdm
+        
         # 5. Loop dettagli (Statistiche, Grafici e Incidenti)
-        for i, event in enumerate(events):
+        new_matches_processed = 0
+        pbar = tqdm(events, desc=f"Partite {date_str}", unit="match", leave=False)
+        for i, event in enumerate(pbar):
             match_id = event['id']
             home_team = event['homeTeam']['name']
             away_team = event['awayTeam']['name']
             
-            logging.info(f"[{i+1}/{total}] Elaborazione: {home_team} vs {away_team} (ID: {match_id})")
+            # --- CONTROLLO ESISTENZA ---
+            if db_module.check_match_exists(match_id, conn):
+                continue
+            
+            pbar.set_description(f"Data: {date_str} | {home_team} vs {away_team}")
             
             # Scarica e salva Grafici
             graphics = get_matches_per_day.get_graphics_per_match(match_id, driver)
@@ -70,13 +78,16 @@ def process_date(date_str, headless_mode=True):
             if incidents:
                 db_module.save_incidents_to_db(match_id, incidents, conn=conn)
             
-            # Piccolo sleep per cortesia verso il server :)
-            time.sleep(1)
-            
-        # 6. Aggiorna colonne statistiche
-        logging.info("Aggiornamento tabella colonne statistiche...")
-        db_module.populate_statistics_column_db(conn=conn)
-        logging.info("Completato con successo!")
+            new_matches_processed += 1
+            # Piccolo sleep per cortesia
+            time.sleep(0.5)
+        pbar.close()
+        
+        # 6. Aggiorna colonne statistiche (SOLO SE ABBIAMO NUOVI DATI)
+        if new_matches_processed > 0:
+            logging.info(f"Rielaborazione colonne statistiche per {new_matches_processed} nuovi match...")
+            db_module.populate_statistics_column_db(conn=conn)
+        logging.info(f"Data {date_str} completata.")
         
     except Exception as e:
         logging.error(f"Errore critico: {e}")
