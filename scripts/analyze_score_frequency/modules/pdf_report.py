@@ -31,7 +31,7 @@ class PdfReport:
         report.save()
     """
     
-    def __init__(self, output_path=None, output_dir=None):
+    def __init__(self, output_path=None, output_dir=None, label=None):
         """
         Inizializza il report PDF.
         
@@ -40,6 +40,8 @@ class PdfReport:
                          Se None, verrà generato automaticamente con timestamp.
             output_dir: Directory in cui salvare il PDF (usata solo se output_path è None).
                         Default: directory 'graphics' accanto al notebook.
+            label: Etichetta descrittiva da includere nel nome del file.
+                   Es: "HT_0-0_xG" → report_HT_0-0_xG_20260211_102238.pdf
         """
         self._figures = []
         
@@ -54,7 +56,18 @@ class PdfReport:
             os.makedirs(output_dir, exist_ok=True)
             
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            output_path = os.path.join(output_dir, f"report_{timestamp}.pdf")
+            
+            if label:
+                # Sanitizza il label: sostituisci spazi e caratteri problematici
+                safe_label = label.replace(' ', '_').replace('/', '-').replace('\\', '-')
+                safe_label = safe_label.replace(':', '-').replace('*', '').replace('?', '')
+                safe_label = safe_label.replace('"', '').replace('<', '').replace('>', '')
+                safe_label = safe_label.replace('|', '-')
+                filename = f"report_{safe_label}_{timestamp}.pdf"
+            else:
+                filename = f"report_{timestamp}.pdf"
+            
+            output_path = os.path.join(output_dir, filename)
         
         self._output_path = output_path
     
@@ -83,6 +96,9 @@ class PdfReport:
             title: Titolo opzionale da aggiungere come suptitle alla figura.
         """
         self.add_figure(fig=None, title=title)
+    
+    # Alias per compatibilità
+    add_current_plot = add_current_figure
     
     def save(self, close_figures=True):
         """
@@ -113,6 +129,9 @@ class PdfReport:
         print(f"   📊 Grafici inclusi: {n_figures}")
         
         return self._output_path
+    
+    # Alias per compatibilità
+    close = save
     
     @property
     def figure_count(self):
